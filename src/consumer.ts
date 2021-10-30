@@ -101,6 +101,7 @@ export interface ConsumerOptions {
   handleMessageTimeout?: number;
   handleMessage?(message: Message): Promise<void>;
   handleMessageBatch?(messages: Message[]): Promise<void>;
+  deleteMessagesOnSuccess?: boolean;
 }
 
 interface Events {
@@ -130,6 +131,7 @@ export class Consumer extends EventEmitter {
   private terminateVisibilityTimeout: boolean;
   private heartbeatInterval: number;
   private sqs: SQSClient;
+  private deleteMessagesOnSuccess: boolean;
 
   constructor(options: ConsumerOptions) {
     super();
@@ -153,6 +155,7 @@ export class Consumer extends EventEmitter {
       region: options.region || process.env.AWS_REGION || 'eu-west-1'
     });
 
+    this.deleteMessagesOnSuccess = typeof options.deleteMessagesOnSuccess === 'undefined' ? true : options.deleteMessagesOnSuccess;
     autoBind(this);
   }
 
@@ -220,7 +223,9 @@ export class Consumer extends EventEmitter {
         });
       }
       await this.executeHandler(message);
-      await this.deleteMessage(message);
+      if (this.deleteMessagesOnSuccess) {
+        await this.deleteMessage(message);
+      }
       this.emit('message_processed', message);
     } catch (err) {
       this.emitError(err, message);
@@ -351,7 +356,11 @@ export class Consumer extends EventEmitter {
         });
       }
       await this.executeBatchHandler(messages);
-      await this.deleteMessageBatch(messages);
+
+      if (this.deleteMessagesOnSuccess) {
+        await this.deleteMessageBatch(messages);
+      }
+
       messages.forEach((message) => {
         this.emit('message_processed', message);
       });
